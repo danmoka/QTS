@@ -10,28 +10,43 @@ namespace QTS
     {
         internal static Request[] Requests { get; set; } // заявки
         internal static Channel[] Channels { get; set; } // каналы
-        internal static List<int> unserved = new List<int>(); // необслужанные заявки
-        private static Random random = new Random();
+        internal static List<int> unserved; // необслужанные заявки
+        internal static int WorkingTime { get; set; } = 0;// время работы системы
+        internal static List<Statistics> Statistics { get; set; } = new List<Statistics>();
+        internal static Statistics CommonStatistics { get; set; }
+        private static Random _random = new Random();
 
-        public static void Start(int requestsCount, int channelsCount)
+        public static void Start(int requestsCount, int channelsCount, int channelCapacity, decimal? busyTime)
         {
-            CreateRequests(requestsCount); // генерация заявок
-            CreateChannels(channelsCount); // генерация каналов
-
-            // моделирование работы
-            for(int i = 0; i < Requests.Length; i++)
+            for (int j = 0; j < WorkingTime; j++)
             {
-                int numberOfGoodChannel = FindChannel(Requests[i]); // поиск подходящего канала
-
-                if (numberOfGoodChannel != -1)
-                    Channels[numberOfGoodChannel].Serve(Requests[i]);
+                unserved = new List<int>();
+                CreateRequests(requestsCount); // генерация заявок
+                if (busyTime == null)
+                    CreateChannels(channelsCount, channelCapacity); // генерация каналов
                 else
-                    unserved.Add(i);
+                    CreateChannels(channelsCount, channelCapacity, (decimal)busyTime);
+
+                // моделирование работы
+                for (int i = 0; i < Requests.Length; i++)
+                {
+                    int numberOfGoodChannel = FindChannel(Requests[i]); // поиск подходящего канала
+
+                    if (numberOfGoodChannel != -1)
+                        Channels[numberOfGoodChannel].Serve(Requests[i]);
+                    else
+                        unserved.Add(i);
+                }
+
+                CreateStatistics();
+
+                QTSPrinter.PrintRequestsArrivalTime();
+                QTSPrinter.PrintResult();
+                QTSPrinter.PrintStatistics(Statistics[j]);
             }
 
-            PrintRequestsArrivalTime();
-            PrintResult();
-            PrintStatistics();
+            CreateCommonStatistics();
+            QTSPrinter.PrintCommonStatistic();
         }
 
         private static void CreateRequests(int requestsCount)
@@ -47,17 +62,29 @@ namespace QTS
             }
         }
 
-        private static void CreateChannels(int channelsCount)
+        private static void CreateChannels(int channelsCount, int maxChannelCapacity)
         {
             Channels = new Channel[channelsCount];
 
             for(int i = 0; i < channelsCount; i++)
             {
-                Channels[i] = new Channel(random.Next(1, 10));
-                decimal[] intervals = IntervalGenerator.GenerateIntervals(Channels[i].Capacity);
+                Channels[i] = new Channel(_random.Next(1, maxChannelCapacity));
+                
+                for (int j = 0; j < Channels[i].Capacity; j++)
+                    Channels[i].ServiceTimes[j] = Math.Round((decimal)_random.NextDouble(), 3);
+            }
+        }
+
+        private static void CreateChannels(int channelsCount, int channelCapacity, decimal busyTime)
+        {
+            Channels = new Channel[channelsCount];
+
+            for (int i = 0; i < channelsCount; i++)
+            {
+                Channels[i] = new Channel(channelCapacity);
 
                 for (int j = 0; j < Channels[i].Capacity; j++)
-                    Channels[i].ServiceTimes[j] = intervals[j];
+                    Channels[i].ServiceTimes[j] = busyTime;
             }
         }
 
@@ -79,60 +106,21 @@ namespace QTS
             return minChannelNumber;
         }
 
-        public static void PrintResult()
+        private static void CreateStatistics()
         {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.Write($"\nИз ");
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.Write($"{Requests.Length} ");
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine("заявок");
-            Console.Write($"Не обслужены: ");
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(unserved.Count);
-            Console.ForegroundColor = ConsoleColor.DarkRed;
+            decimal pom = Math.Round((decimal)(Requests.Length - unserved.Count) / Requests.Length, 3);
+            int cc = Requests.Length - unserved.Count;
+            decimal pof = Math.Round((decimal)unserved.Count / Requests.Length, 3);
+            decimal cmt = Math.Round(GetTotalServingTime() / (Requests.Length - unserved.Count), 2);
 
-            foreach (int num in unserved)
-                Console.WriteLine($"заявка № {num}");
+            Statistics statistics = new Statistics.Builder().
+                ProbabilityOfMaintenance(pom).
+                ChannelCapacity(cc).
+                ProbabilityOfRefusal(pof).
+                CommonMaintenanceTime(cmt).Build();
 
-            Console.ResetColor();
-            string answer = "";
-
-            for(int i = 0; i < Channels.Length; i++)
-            {
-                answer += $"канал {i}: обслужено заявок {Channels[i].NumberOfServed} " +
-                    $"из {Channels[i].Capacity} возможных, " +
-                    $"время работы: {Channels[i].BusyTime}. (№ заявки, время обслуживания) [ ";
-
-                foreach (var servedRequest in Channels[i].Served)
-                    answer += $"{servedRequest} ";
-
-                answer += "] \n";
-            }
-
-            Console.WriteLine(answer);
-        } 
-
-        private static void PrintRequestsArrivalTime()
-        {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.Write("Приходы заявок: ");
-            Console.ResetColor();
-
-            foreach (Request request in Requests)
-                Console.Write($"№{request.ID}: {request.ArrivalTime} ");
-        }
-
-        private static void PrintStatistics()
-        {
-            Console.ForegroundColor = ConsoleColor.Magenta;
-            Console.WriteLine("Статистика:");
-            Console.ResetColor();
-            Console.WriteLine($"Вероятность обслуживания: {100 * Math.Round((decimal)(Requests.Length - unserved.Count) / Requests.Length, 3)} %");
-            Console.WriteLine($"Пропускная способность: {Requests.Length - unserved.Count} [шт/час]");
-            Console.WriteLine($"Вероятность отказа: {100 * Math.Round((decimal)unserved.Count / Requests.Length, 3)} %");
-            Console.WriteLine($"Среднее время обслуживания заявки: {60 * Math.Round(GetTotalServingTime() / (Requests.Length - unserved.Count), 2)} [мин]");
-        }
+            Statistics.Add(statistics);
+        }       
 
         private static decimal GetTotalServingTime()
         {
@@ -142,6 +130,33 @@ namespace QTS
                 totalServingTime += channel.ServiceTime;
 
             return totalServingTime;
+        }
+
+        private static void CreateCommonStatistics()
+        {
+            decimal pom = 0;
+            int cc = 0;
+            decimal pof = 0;
+            decimal cmt = 0;
+
+            foreach(var stat in Statistics)
+            {
+                pom += stat.probabilityOfMaintenance;
+                cc += stat.channelCapacity;
+                pof += stat.probabilityOfRefusal;
+                cmt += stat.commonMaintenanceTime;
+            }
+
+            pom = pom / WorkingTime;
+            cc = cc / WorkingTime;
+            pof = pof / WorkingTime;
+            cmt = cmt / WorkingTime;
+
+            CommonStatistics = new Statistics.Builder().
+                ProbabilityOfMaintenance(pom).
+                ChannelCapacity(cc).
+                ProbabilityOfRefusal(pof).
+                CommonMaintenanceTime(cmt).Build();
         }
     }
 }

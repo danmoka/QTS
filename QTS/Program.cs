@@ -10,38 +10,43 @@ namespace QTS
     {
         static void Main(string[] args)
         {
-            Console.Write("Введите количество заявок: ");
-            int requestCount = 0;
-
             try
             {
-                requestCount = int.Parse(Console.ReadLine());
-            }
-            catch(Exception e)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("Введенены некорректные данные!");
-                return;
-            }
+                Console.Write("Введите количество часов работы системы: ");
+                QTS.WorkingTime = int.Parse(Console.ReadLine());
 
-            Console.Write("Введите количество каналов: ");
-            int channelCount = 0;
+                Console.Write("Введите количество заявок в час: ");
+                int requestCount = int.Parse(Console.ReadLine());
 
-            try
-            {
-                channelCount = int.Parse(Console.ReadLine());
+                Console.Write("Введите количество каналов: ");
+                int channelCount = int.Parse(Console.ReadLine());
+
+                Console.Write("Сгенерировать случайные данные? Y\\N: ");
+
+                if (Console.ReadLine().ToLower() == "y")
+                {
+                    Console.Write("Введите максимально возможное количество обрабатываемых заявок одним каналом: ");
+                    int maxChannelCapacity = int.Parse(Console.ReadLine());
+                    if (requestCount > 0 && channelCount > 0 && maxChannelCapacity > 0)
+                        QTS.Start(requestCount, channelCount, maxChannelCapacity, null);
+                }
+                else
+                {
+                    Console.Write("Введите количество заявок обрабатываемых одним каналом: ");
+                    int channelCapacity = int.Parse(Console.ReadLine());
+
+                    Console.Write("Введите время обработки одной заявки в канале (доля от часа, например, 0,5 - 30 [мин]): ");
+                    decimal busyTime = decimal.Parse(Console.ReadLine());
+
+                    QTS.Start(requestCount, channelCount, channelCapacity, busyTime);
+                }
             }
             catch (Exception e)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("Введенены некорректные данные!");
+                Console.WriteLine("Что-то пошло не так!");
                 return;
             }
-
-            if(requestCount > 0 && channelCount > 0)
-                QTS.Start(requestCount, channelCount);
-            else
-                Console.WriteLine();
         }
     }
 }
